@@ -81,11 +81,12 @@ workflows:
     environment:
       flutter: stable
       groups:
-        - google_play             # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
         - keystore                # CM_KEYSTORE, CM_KEY_ALIAS, CM_KEY_PASSWORD, CM_STORE_PASSWORD
-        - firebase                # GOOGLE_SERVICE_JSON
       vars:
         PACKAGE_NAME: com.chargeshield.app
+        # These must be set as plain (non-secret) variables in Codemagic app settings:
+        GOOGLE_SERVICES_JSON: $GOOGLE_SERVICES_JSON
+        GOOGLE_SERVICE_INFO_PLIST: $GOOGLE_SERVICE_INFO_PLIST
 
     triggering:
       events:
@@ -95,10 +96,10 @@ workflows:
           include: true
 
     scripts:
-      - name: Decode google-services.json
+      - name: Decode Firebase config files
         script: |
-          echo "$GOOGLE_SERVICE_JSON" | base64 --decode \
-            > android/app/google-services.json
+          echo $GOOGLE_SERVICES_JSON | base64 --decode > android/app/google-services.json
+          echo $GOOGLE_SERVICE_INFO_PLIST | base64 --decode > ios/Runner/GoogleService-Info.plist
 
       - name: Set up keystore
         script: |
@@ -110,18 +111,15 @@ workflows:
           storeFile=$CM_BUILD_DIR/keystore.jks
           EOF
 
-      - name: Install Flutter dependencies
+      - name: Get Flutter packages
         script: flutter pub get
 
-      - name: Build Android release AAB
-        script: flutter build appbundle --release
+      - name: Generate Hive adapters
+        script: flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Build Android APKs
+        script: flutter build apk --release --split-per-abi
 
     artifacts:
-      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/flutter-apk/*.apk
       - build/app/outputs/mapping/release/mapping.txt
-
-    publishing:
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
