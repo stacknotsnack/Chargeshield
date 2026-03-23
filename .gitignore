@@ -5,7 +5,6 @@
 .pub-cache/
 .pub/
 build/
-*.g.dart
 
 # Android
 android/app/google-services.json
