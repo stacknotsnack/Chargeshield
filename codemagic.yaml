@@ -10,8 +10,10 @@ workflows:
     scripts:
       - name: Decode Firebase config files
         script: |
-          echo "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
-          echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > ios/Runner/GoogleService-Info.plist
+          printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > android/app/google-services.json
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | tr -d '[:space:]' | base64 --decode > ios/Runner/GoogleService-Info.plist
+          echo "--- google-services.json first 80 chars ---"
+          head -c 80 android/app/google-services.json
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters
@@ -39,8 +41,8 @@ workflows:
     scripts:
       - name: Decode Firebase config files
         script: |
-          echo "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
-          echo "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > ios/Runner/GoogleService-Info.plist
+          printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > android/app/google-services.json
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | tr -d '[:space:]' | base64 --decode > ios/Runner/GoogleService-Info.plist
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters
