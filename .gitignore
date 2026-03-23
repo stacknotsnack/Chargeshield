@@ -1,0 +1,43 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+*.g.dart
+
+# Android
+android/app/google-services.json
+android/local.properties
+android/key.properties
+android/*.jks
+android/.gradle/
+android/.kotlin/
+android/app/.cxx/
+android/captures/
+
+# iOS secrets
+ios/Runner/GoogleService-Info.plist
+ios/Flutter/Release.xcconfig
+ios/Flutter/Debug.xcconfig
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Environment / secrets
+*.env
+secrets.json
+
+# macOS
+.DS_Store
+
+# Local Netlify folder
+.netlify
+
+# Build outputs
+*.apk
+*.aab
+*.ipa

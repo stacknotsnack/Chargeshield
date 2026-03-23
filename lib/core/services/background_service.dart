@@ -1,0 +1,488 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'dart:ui';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../constants/app_constants.dart';
+import '../constants/zone_polygons.dart';
+import '../services/notification_service.dart';
+import '../services/zone_detection_service.dart';
+import '../../data/database/database_helper.dart';
+import '../../data/models/journey.dart';
+import '../../data/models/vehicle.dart';
+
+/// Background location service that runs as a foreground service on Android.
+@pragma('vm:entry-point')
+class BackgroundLocationService {
+  BackgroundLocationService._();
+
+  static Future<void> initialize() async {
+    final service = FlutterBackgroundService();
+
+    await service.configure(
+      androidConfiguration: AndroidConfiguration(
+        onStart: _onStart,
+        autoStart: false,
+        isForegroundMode: true,
+        notificationChannelId: AppConstants.backgroundChannelId,
+        initialNotificationTitle: 'ChargeShield Active',
+        initialNotificationContent: 'Monitoring for charge zones...',
+        foregroundServiceNotificationId: AppConstants.backgroundNotificationId,
+      ),
+      iosConfiguration: IosConfiguration(
+        autoStart: false,
+        onForeground: _onStart,
+        onBackground: _onIosBackground,
+      ),
+    );
+  }
+
+  static Future<bool> start() async {
+    final service = FlutterBackgroundService();
+    return service.startService();
+  }
+
+  static Future<void> stop() async {
+    final service = FlutterBackgroundService();
+    service.invoke('stop');
+  }
+
+  static Future<bool> isRunning() => FlutterBackgroundService().isRunning();
+
+  @pragma('vm:entry-point')
+  static Future<void> _onStart(ServiceInstance service) async {
+    DartPluginRegistrant.ensureInitialized();
+    debugPrint('DEBUG BG: _onStart entered');
+
+    // Firebase must be initialised in every Dart isolate independently.
+    // The background service runs in a separate isolate from main(), so
+    // Firebase.initializeApp() was never called here — causing every access
+    // to FirebaseMessaging.instance to throw and crash _onStart silently.
+    try {
+      await Firebase.initializeApp();
+      debugPrint('DEBUG BG: Firebase initialised');
+    } catch (e) {
+      // Already initialised in this isolate (shouldn't happen) or failed — safe to continue.
+      debugPrint('DEBUG BG: Firebase.initializeApp skipped/failed: $e');
+    }
+
+    // Android: switch to foreground mode
+    if (service is AndroidServiceInstance) {
+      service.on('stop').listen((_) => service.stopSelf());
+      service.on('setForeground').listen((_) {
+        service.setAsForegroundService();
+      });
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // Try to open Hive in this isolate for vehicle lookups.
+    // Wrapped in try-catch: if Hive fails (e.g. file contention with main isolate)
+    // we fall back to SharedPreferences-cached vehicle data.
+    bool hiveAvailable = false;
+    try {
+      await Hive.initFlutter();
+      if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(VehicleAdapter());
+      await Hive.openBox<Vehicle>(AppConstants.vehiclesBox);
+      await Hive.openBox(AppConstants.settingsBox);
+      hiveAvailable = true;
+    } catch (e) {
+      debugPrint('DEBUG BG: Hive init failed: $e');
+      hiveAvailable = false;
+    }
+    debugPrint('DEBUG BG: hiveAvailable=$hiveAvailable');
+
+    // Check location permission before starting stream
+    final locationPermission = await Permission.locationWhenInUse.status;
+    debugPrint('DEBUG BG: locationPermission=$locationPermission');
+    if (!locationPermission.isGranted) {
+      service.invoke('permission_error', {'message': 'Location permission not granted'});
+      if (service is AndroidServiceInstance) service.stopSelf();
+      return;
+    }
+
+    // Check location service is enabled
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    debugPrint('DEBUG BG: locationServiceEnabled=$serviceEnabled');
+    if (!serviceEnabled) {
+      service.invoke('location_error', {'message': 'Location services disabled'});
+      if (service is AndroidServiceInstance) service.stopSelf();
+      return;
+    }
+
+    // Initialise notification service in this isolate so show() works.
+    // Wrapped in try-catch: a notification failure must NOT prevent the
+    // location stream from starting (journeys can still be logged to DB).
+    try {
+      await NotificationService.instance.initialize();
+      debugPrint('DEBUG BG: NotificationService initialised');
+    } catch (e) {
+      debugPrint('DEBUG BG: NotificationService init failed (non-fatal): $e');
+    }
+
+    // Initialise database in this isolate
+    try {
+      await DatabaseHelper.instance.database;
+      debugPrint('DEBUG BG: Database initialised');
+    } catch (e) {
+      debugPrint('DEBUG BG: Database init failed (non-fatal): $e');
+    }
+
+    // Sanity-check zone detection before starting the stream.
+    // The Dartford bridge centre (51.4651, 0.2587) must return inDartford=true.
+    final _dartfordTest = ZoneDetectionService.instance.detect(const LatLng(51.4651, 0.2587));
+    debugPrint('DEBUG SANITY: Dartford(51.4651,0.2587) → inDartford=${_dartfordTest.inDartford} (expected true)');
+
+    // Start with "outside all zones" so that if tracking begins while already
+    // inside a zone the very first position update is treated as an entry.
+    ZoneStatus previousStatus = ZoneStatus.empty(const LatLng(0, 0));
+
+    // Read mock GPS mode flag. When true, use legacy LocationManager so mock GPS
+    // apps (Fake Route) are accepted. When false (default), use Fused Location
+    // Provider which is more reliable on real hardware with screen off.
+    final bool mockGpsMode = prefs.getBool(AppConstants.keyMockGpsMode) ?? false;
+
+    // In debug builds always behave as if mock GPS mode is on so that Fake Route
+    // and other mock GPS apps work without needing to toggle the setting manually.
+    final bool useMockSettings = !kReleaseMode || mockGpsMode;
+
+    // Location stream settings — platform-specific.
+    // Android: use AndroidSettings with foreground-service-safe config (no
+    // ForegroundNotificationConfig — we're already inside flutter_background_service).
+    // iOS: use AppleSettings with automotive activity type for best accuracy.
+    final LocationSettings locationSettings = Platform.isAndroid
+        ? AndroidSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: useMockSettings ? 0 : 20,
+            intervalDuration: Duration(seconds: useMockSettings ? 3 : 10),
+            forceLocationManager: useMockSettings,
+          )
+        : AppleSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: useMockSettings ? 0 : 20,
+            activityType: ActivityType.automotiveNavigation,
+            pauseLocationUpdatesAutomatically: false,
+            showBackgroundLocationIndicator: true,
+          );
+
+    debugPrint('DEBUG BG: Starting position stream (mockGpsMode=$mockGpsMode useMockSettings=$useMockSettings kReleaseMode=$kReleaseMode)');
+
+    // Broadcast an immediate one-shot fix so the UI shows a position straight
+    // away, without waiting for the first distance-filtered stream event.
+    try {
+      final initial = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (kReleaseMode && !mockGpsMode && initial.isMocked) {
+        debugPrint('DEBUG BG: Initial position is mocked — skipping (release mode only)');
+      } else {
+        final initPoint = LatLng(initial.latitude, initial.longitude);
+        final initStatus = ZoneDetectionService.instance.detect(initPoint);
+        service.invoke('location', {
+          'lat': initial.latitude,
+          'lng': initial.longitude,
+          'zones': initStatus.activeZoneIds.toList(),
+          'timestamp': initStatus.timestamp.toIso8601String(),
+        });
+        debugPrint('DEBUG BG: Initial position broadcast: ${initial.latitude}, ${initial.longitude}');
+      }
+    } catch (e) {
+      debugPrint('DEBUG BG: Initial position failed (non-fatal): $e');
+    }
+
+    // Whether to record GPS route points while inside a zone (Pro feature).
+    final bool recordRoute = prefs.getBool(AppConstants.keyRecordExactRoute) ?? false;
+    debugPrint('DEBUG BG: recordRoute=$recordRoute');
+
+    // Active journeys: zone_id → DB journey id
+    final Map<String, String> activeJourneyIds = {};
+    // Route points per active zone: zone_id → [{lat, lng}, ...]
+    final Map<String, List<Map<String, double>>> activeRoutes = {};
+
+    StreamSubscription<Position>? positionSub;
+
+    positionSub = Geolocator.getPositionStream(locationSettings: locationSettings)
+        .listen((Position position) async {
+      debugPrint('DEBUG LOC: ${position.latitude}, ${position.longitude} '
+          'acc=${position.accuracy.toStringAsFixed(0)}m mocked=${position.isMocked}');
+
+      // Skip mocked positions only in release builds unless mock GPS mode is enabled.
+      if (kReleaseMode && !mockGpsMode && position.isMocked) return;
+
+      final LatLng point = LatLng(position.latitude, position.longitude);
+      final ZoneStatus current = ZoneDetectionService.instance.detect(point);
+
+      // Broadcast current status to UI
+      service.invoke('location', {
+        'lat': position.latitude,
+        'lng': position.longitude,
+        'zones': current.activeZoneIds.toList(),
+        'timestamp': current.timestamp.toIso8601String(),
+      });
+
+      // Accumulate route points for any currently active zones
+      if (recordRoute && activeJourneyIds.isNotEmpty) {
+        final pt = {'lat': position.latitude, 'lng': position.longitude};
+        for (final zoneId in activeJourneyIds.keys) {
+          activeRoutes[zoneId] ??= [];
+          activeRoutes[zoneId]!.add(pt);
+        }
+      }
+
+      final entries = ZoneDetectionService.instance.detectEntries(previousStatus, current);
+      if (entries.isNotEmpty) {
+        debugPrint('DEBUG ENTRY: Zone entries detected: ${entries.map((z) => z.shortName).join(', ')}');
+      }
+
+      // Handle zone exits — update journey with exit time and route
+      final exits = ZoneDetectionService.instance.detectExits(previousStatus, current);
+      for (final zone in exits) {
+        final journeyId = activeJourneyIds.remove(zone.id);
+        final route = activeRoutes.remove(zone.id);
+        if (journeyId != null) {
+          debugPrint('DEBUG EXIT: ${zone.shortName} — closing journey $journeyId');
+          try {
+            await _closeJourney(
+              journeyId: journeyId,
+              exitPoint: point,
+              routePoints: recordRoute ? route : null,
+            );
+            debugPrint('DEBUG BG: Journey closed id=$journeyId zone=${zone.id}');
+          } catch (e) {
+            debugPrint('DEBUG BG: _closeJourney failed for ${zone.id}: $e');
+          }
+        }
+      }
+
+      if (entries.isNotEmpty) {
+        // Resolve vehicle identity — prefer Hive, fall back to SharedPreferences cache
+        String vehicleReg = prefs.getString(AppConstants.keySelectedVehicleReg) ?? 'Your vehicle';
+        String vehicleType = prefs.getString(AppConstants.keySelectedVehicleType) ?? 'car';
+        String vehicleFuelType = prefs.getString(AppConstants.keySelectedVehicleFuelType) ?? 'petrol';
+        if (hiveAvailable) {
+          try {
+            final settingsBox = Hive.box(AppConstants.settingsBox);
+            final selectedId = settingsBox.get(AppConstants.keySelectedVehicleId) as String?;
+            if (selectedId != null) {
+              final vehiclesBox = Hive.box<Vehicle>(AppConstants.vehiclesBox);
+              final vehicle = vehiclesBox.values
+                  .where((v) => v.id == selectedId)
+                  .firstOrNull;
+              vehicleReg = vehicle?.registration ?? vehicleReg;
+              vehicleType = vehicle?.type ?? vehicleType;
+              vehicleFuelType = vehicle?.fuelType ?? vehicleFuelType;
+            }
+          } catch (e) {
+            debugPrint('DEBUG BG: Hive vehicle lookup failed: $e');
+            // keep SharedPreferences fallback values
+          }
+        }
+        debugPrint('DEBUG BG: Vehicle=$vehicleReg type=$vehicleType fuel=$vehicleFuelType');
+
+        // Log journey history and start tracking the active journey
+        for (final zone in entries) {
+          try {
+            final journeyId = await _logZoneEntry(
+                zone, point, vehicleReg, vehicleType, vehicleFuelType);
+            activeJourneyIds[zone.id] = journeyId;
+            if (recordRoute) {
+              activeRoutes[zone.id] = [{'lat': point.latitude, 'lng': point.longitude}];
+            }
+            debugPrint('DEBUG BG: Journey logged id=$journeyId zone=${zone.id}');
+          } catch (e, st) {
+            debugPrint('DEBUG BG: _logZoneEntry failed for ${zone.id}: $e\n$st');
+          }
+        }
+
+        // Send notification if enabled (or always in debug so we can test).
+        // Filter by per-zone preferences — only notify for zones the user wants.
+        final notifEnabled = prefs.getBool(AppConstants.keyNotificationsEnabled) ?? true;
+        debugPrint('DEBUG BG: notifEnabled=$notifEnabled kDebugMode=$kDebugMode');
+        if (notifEnabled || kDebugMode) {
+          final notifiableEntries = entries.where((zone) {
+            final key = '${AppConstants.keyNotifyZonePrefix}${zone.id}';
+            return prefs.getBool(key) ?? true; // default ON if not set
+          }).toList();
+          if (notifiableEntries.isNotEmpty) {
+            final isPremium = hiveAvailable
+                ? (Hive.box(AppConstants.settingsBox).get(AppConstants.keyPremiumActive, defaultValue: false) as bool)
+                : (prefs.getBool(AppConstants.keyPremiumActive) ?? false);
+
+            // Free tier: only freeAlertZoneIds (ULEZ, Dartford) trigger notifications.
+            // Pro tier: all detected zones (London + UK-wide) trigger notifications.
+            // All zones are still detected and logged to history regardless.
+            final zoneFiltered = isPremium || kDebugMode
+                ? notifiableEntries
+                : notifiableEntries
+                    .where((z) => AppConstants.freeAlertZoneIds.contains(z.id))
+                    .toList();
+
+            // Enforce free tier monthly alert cap.
+            final alertsAllowed = isPremium || kDebugMode
+                ? zoneFiltered
+                : _filterByMonthlyLimit(zoneFiltered, prefs);
+            if (alertsAllowed.isNotEmpty) {
+              try {
+                await NotificationService.instance.notifyZoneEntries(
+                  alertsAllowed,
+                  vehicleReg,
+                  vehicleType: vehicleType,
+                );
+                debugPrint('DEBUG BG: Notification sent for ${alertsAllowed.map((z) => z.shortName).join(', ')}');
+              } catch (e) {
+                debugPrint('DEBUG BG: Notification failed: $e');
+              }
+            } else {
+              debugPrint('DEBUG BG: Free tier monthly alert limit reached');
+            }
+          } else {
+            debugPrint('DEBUG BG: All entered zones are muted by user preference');
+          }
+        }
+
+        // Schedule payment reminders if enabled
+        if (prefs.getBool(AppConstants.keyPaymentRemindersEnabled) ?? true) {
+          final minutesBefore =
+              prefs.getInt(AppConstants.keyReminderMinutesBefore) ?? 60;
+          for (final zone in entries) {
+            try {
+              final deadline = _nextPaymentDeadline(zone.id);
+              await NotificationService.instance.schedulePaymentReminder(
+                id: zone.id.hashCode,
+                zone: zone,
+                deadline: deadline,
+                minutesBefore: minutesBefore,
+              );
+            } catch (_) {
+              // non-fatal
+            }
+          }
+        }
+      }
+
+      previousStatus = current;
+    }, onError: (Object e) {
+      debugPrint('DEBUG BG: Position stream error: $e');
+    });
+
+    // Listen for stop signal
+    service.on('stop').listen((_) {
+      positionSub?.cancel();
+      if (service is AndroidServiceInstance) {
+        service.stopSelf();
+      }
+    });
+  }
+
+  /// Returns a filtered list of zones that can still fire alerts under the
+  /// free tier monthly cap (15 alerts/month). Increments the counter in prefs.
+  /// Fires a one-time "limit reached" notification when the cap is first hit.
+  static List<ZoneInfo> _filterByMonthlyLimit(
+      List<ZoneInfo> zones, SharedPreferences prefs) {
+    final now = DateTime.now();
+    final monthKey = 'free_alert_count_${now.year}_${now.month}';
+    final notifiedKey = 'free_alert_limit_notified_${now.year}_${now.month}';
+    int used = prefs.getInt(monthKey) ?? 0;
+    final remaining = AppConstants.freeMonthlyAlertLimit - used;
+    if (remaining <= 0) {
+      // Show one-time "limit reached" notification
+      if (!(prefs.getBool(notifiedKey) ?? false)) {
+        prefs.setBool(notifiedKey, true);
+        NotificationService.instance.showZoneEntry(
+          title: 'Free alert limit reached',
+          body: "You've used all 15 free alerts this month. Upgrade to Pro for unlimited alerts.",
+        );
+      }
+      return [];
+    }
+    final allowed = zones.take(remaining).toList();
+    prefs.setInt(monthKey, used + allowed.length);
+    return allowed;
+  }
+
+  static Future<String> _logZoneEntry(ZoneInfo zone, LatLng position,
+      String vehicleReg, String vehicleType, String vehicleFuelType) async {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    double charge = zone.chargeFor(vehicleType);
+
+    // Apply fuel-based exemptions that the vehicle-type lookup can't know about.
+    // ULEZ: electric, hybrid, PHEV are compliant → no charge.
+    // CCZ: electric, hybrid, PHEV are exempt → no charge.
+    final isElectricOrHybrid = vehicleFuelType == 'electric' ||
+        vehicleFuelType == 'hybrid' ||
+        vehicleFuelType == 'phev';
+    if (isElectricOrHybrid &&
+        (zone.id == 'ulez' || zone.id == 'ccz') &&
+        charge > 0.0) {
+      charge = 0.0;
+    }
+
+    // Free overnight for road tunnels/crossings (22:00–06:00 daily).
+    const _overnightFreeZones = {'dartford', 'silvertown', 'blackwall'};
+    if (_overnightFreeZones.contains(zone.id) && _isCrossingFreeNow()) {
+      charge = 0.0;
+    }
+
+    // Auto-set exempt when charge is zero (free vehicle type, or fuel-based exemption).
+    final paymentStatus = charge == 0.0 ? PaymentStatus.exempt : PaymentStatus.unpaid;
+    debugPrint('DEBUG BG: _logZoneEntry zone=${zone.id} charge=$charge status=$paymentStatus');
+    final db = DatabaseHelper.instance;
+    await db.insertJourney(Journey(
+      id: id,
+      vehicleRegistration: vehicleReg,
+      zoneId: zone.id,
+      zoneName: zone.shortName,
+      entryTime: DateTime.now(),
+      entryLat: position.latitude,
+      entryLng: position.longitude,
+      charge: charge,
+      paymentStatus: paymentStatus,
+    ));
+    return id;
+  }
+
+  static Future<void> _closeJourney({
+    required String journeyId,
+    required LatLng exitPoint,
+    List<Map<String, double>>? routePoints,
+  }) async {
+    final db = DatabaseHelper.instance;
+    final journey = await db.getJourneyById(journeyId);
+    if (journey == null) return;
+    journey.exitTime = DateTime.now();
+    journey.exitLat = exitPoint.latitude;
+    journey.exitLng = exitPoint.longitude;
+    journey.routePoints = routePoints;
+    await db.updateJourney(journey);
+  }
+
+  /// Returns true if it's currently the overnight free window (22:00–06:00).
+  /// Dartford, Silvertown, and Blackwall tunnels are free during this window.
+  static bool _isCrossingFreeNow() {
+    final hour = DateTime.now().hour;
+    return hour >= 22 || hour < 6;
+  }
+
+  static DateTime _nextPaymentDeadline(String zoneId) {
+    final now = DateTime.now();
+    // CCZ payment deadline: same day if entered before 14:00, else next day. Pay by midnight.
+    // Simplified: deadline is 23:59 today or tomorrow.
+    final today2359 = DateTime(now.year, now.month, now.day, 23, 59);
+    if (now.isBefore(today2359)) return today2359;
+    return today2359.add(const Duration(days: 1));
+  }
+
+  @pragma('vm:entry-point')
+  static Future<bool> _onIosBackground(ServiceInstance service) async {
+    return true;
+  }
+}

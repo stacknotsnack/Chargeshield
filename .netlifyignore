@@ -1,0 +1,28 @@
+# Flutter build output
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Android
+android/.gradle/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+
+# IDE
+.idea/
+.vscode/
+
+# Dependencies
+node_modules/
+netlify/functions/node_modules/
+
+# Git
+.git/
+
+# Misc
+*.log
+*.tmp

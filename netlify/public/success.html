@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payment Successful — ChargeShield Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060810;
+  --s1:#0C0F1A;
+  --white:#EEF0FF;
+  --white2:#C4C8E8;
+  --muted:#6B7194;
+  --teal:#00C2A8;
+  --teal-bg:rgba(0,194,168,0.08);
+  --teal-border:rgba(0,194,168,0.2);
+  --green:#22C55E;
+  --green-bg:rgba(34,197,94,0.08);
+  --border:rgba(255,255,255,0.055);
+}
+html{scroll-behavior:smooth}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--white);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;}
+
+.card{background:var(--s1);border:1px solid var(--teal-border);border-radius:24px;padding:3rem 2.5rem;max-width:520px;width:100%;text-align:center;}
+
+.shield{width:72px;height:72px;margin:0 auto 1.5rem;animation:popIn 0.5s ease both;}
+@keyframes popIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}
+
+.check-circle{width:72px;height:72px;background:var(--green-bg);border:2px solid var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;animation:popIn 0.5s ease both;}
+.check-circle svg{width:32px;height:32px;}
+
+h1{font-size:1.8rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:0.5rem;}
+.sub{font-size:1rem;font-weight:300;color:var(--white2);margin-bottom:2rem;line-height:1.6;}
+
+.key-box{background:#060810;border:1.5px solid var(--teal);border-radius:14px;padding:1.5rem;margin-bottom:2rem;}
+.key-label{font-size:0.75rem;font-weight:600;color:var(--teal);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem;}
+.key-value{font-family:'Courier New',monospace;font-size:1.3rem;font-weight:700;color:var(--white);letter-spacing:2px;}
+.key-note{font-size:0.75rem;color:var(--muted);margin-top:0.5rem;}
+
+.steps{text-align:left;background:rgba(255,255,255,0.03);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:2rem;}
+.steps-title{font-size:0.85rem;font-weight:600;margin-bottom:0.85rem;color:var(--white2);}
+.step{display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.65rem;}
+.step:last-child{margin-bottom:0;}
+.step-num{min-width:22px;height:22px;background:var(--teal-bg);border:1px solid var(--teal-border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:var(--teal);flex-shrink:0;margin-top:1px;}
+.step-text{font-size:0.83rem;color:var(--white2);line-height:1.5;}
+.step-text b{color:var(--white);font-weight:600;}
+
+.download-btn{display:block;width:100%;padding:0.9rem;border-radius:12px;background:var(--teal);border:none;color:#020810;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;text-decoration:none;transition:all 0.2s;margin-bottom:0.75rem;}
+.download-btn:hover{filter:brightness(1.1);transform:translateY(-2px);}
+
+.back-link{font-size:0.83rem;color:var(--muted);text-decoration:none;transition:color 0.2s;}
+.back-link:hover{color:var(--white);}
+
+.email-note{font-size:0.78rem;color:var(--muted);margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border);line-height:1.6;}
+.email-note a{color:var(--teal);text-decoration:none;}
+
+.downloading-msg{font-size:0.82rem;color:var(--green);margin-top:0.5rem;opacity:0;transition:opacity 0.3s;}
+.downloading-msg.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <!-- Shield Icon -->
+  <svg class="shield" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="36" cy="36" r="36" fill="rgba(0,194,168,0.08)"/>
+    <path d="M36 16L20 23V34C20 43.4 27.2 52.2 36 54C44.8 52.2 52 43.4 52 34V23L36 16Z" fill="rgba(0,194,168,0.15)" stroke="#00C2A8" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M29 36l4.5 4.5L43 31" stroke="#00C2A8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <h1>You're now Pro! 🎉</h1>
+  <p class="sub">Payment confirmed. Your licence key has been emailed to you — check your inbox now. The APK download is starting automatically.</p>
+
+  <!-- Licence Key -->
+  <div class="key-box">
+    <div class="key-label">Your licence key</div>
+    <div class="key-value" id="keyDisplay">Check your email</div>
+    <div class="key-note">Also sent to your email from support@chargeshield.co.uk</div>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="steps-title">How to activate Pro in the app:</div>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Open <b>ChargeShield</b> on your Android phone</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">Tap <b>Upgrade to Pro</b> on the home screen</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Enter your licence key from the email and tap <b>Activate</b></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-text">All Pro features unlock <b>instantly</b></div>
+    </div>
+  </div>
+
+  <!-- Download Button -->
+  <a href="https://drive.google.com/uc?export=download&confirm=t&id=1Itg87GRuZwa627iN61hd87aJWh9_hWxv" class="download-btn" id="downloadBtn" onclick="showDownloading()">
+    ⬇ Download ChargeShield APK
+  </a>
+  <div class="downloading-msg" id="downloadingMsg">✓ Download started!</div>
+
+  <a href="/" class="back-link">← Back to chargeshield.co.uk</a>
+
+  <div class="email-note">
+    Didn't receive your licence key email? Check your spam folder or contact us at <a href="mailto:support@chargeshield.co.uk">support@chargeshield.co.uk</a>
+  </div>
+</div>
+
+<script>
+// Auto-start APK download after 2 seconds
+setTimeout(function() {
+  var link = document.createElement('a');
+  link.href = 'https://drive.google.com/uc?export=download&confirm=t&id=1Itg87GRuZwa627iN61hd87aJWh9_hWxv';
+  link.download = 'chargeshield.apk';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showDownloading();
+}, 2000);
+
+function showDownloading() {
+  document.getElementById('downloadingMsg').classList.add('show');
+}
+</script>
+
+</body>
+</html>

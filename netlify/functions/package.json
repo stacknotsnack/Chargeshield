@@ -1,0 +1,8 @@
+{
+  "name": "chargeshield-functions",
+  "version": "1.0.0",
+  "description": "Netlify serverless functions for ChargeShield",
+  "dependencies": {
+    "stripe": "^16.12.0"
+  }
+}
