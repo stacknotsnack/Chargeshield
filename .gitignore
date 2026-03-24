@@ -7,7 +7,6 @@
 build/
 
 # Android
-android/app/google-services.json
 android/local.properties
 android/key.properties
 android/*.jks
@@ -17,7 +16,6 @@ android/app/.cxx/
 android/captures/
 
 # iOS secrets
-ios/Runner/GoogleService-Info.plist
 ios/Flutter/Release.xcconfig
 ios/Flutter/Debug.xcconfig
 

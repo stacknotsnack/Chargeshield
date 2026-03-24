@@ -7,31 +7,13 @@ workflows:
       flutter: stable
       vars:
         BUNDLE_ID: com.chargeshield.app
-        GOOGLE_SERVICES_JSON: $GOOGLE_SERVICES_JSON
-        GOOGLE_SERVICE_INFO_PLIST: $GOOGLE_SERVICE_INFO_PLIST
     scripts:
-      - name: Decode Firebase config files
-        script: |
-          python3 - <<'PYEOF'
-          import base64, os
-          def decode_b64(val):
-              v = val.strip()
-              v += '=' * (-len(v) % 4)
-              return base64.b64decode(v)
-          with open('android/app/google-services.json', 'wb') as f:
-              f.write(decode_b64(os.environ['GOOGLE_SERVICES_JSON']))
-          with open('ios/Runner/GoogleService-Info.plist', 'wb') as f:
-              f.write(decode_b64(os.environ['GOOGLE_SERVICE_INFO_PLIST']))
-          print('Firebase config files decoded successfully')
-          PYEOF
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters
         script: flutter pub run build_runner build --delete-conflicting-outputs
       - name: Build Android APK
-        script: |
-          flutter build apk --release --split-per-abi \
-            --dart-define=GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_IOS_API_KEY
+        script: flutter build apk --release --split-per-abi
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
 
@@ -48,23 +30,7 @@ workflows:
         APP_NAME: ChargeShield
         XCODE_WORKSPACE: ios/Runner.xcworkspace
         XCODE_SCHEME: Runner
-        GOOGLE_SERVICES_JSON: $GOOGLE_SERVICES_JSON
-        GOOGLE_SERVICE_INFO_PLIST: $GOOGLE_SERVICE_INFO_PLIST
     scripts:
-      - name: Decode Firebase config files
-        script: |
-          python3 - <<'PYEOF'
-          import base64, os
-          def decode_b64(val):
-              v = val.strip()
-              v += '=' * (-len(v) % 4)
-              return base64.b64decode(v)
-          with open('android/app/google-services.json', 'wb') as f:
-              f.write(decode_b64(os.environ['GOOGLE_SERVICES_JSON']))
-          with open('ios/Runner/GoogleService-Info.plist', 'wb') as f:
-              f.write(decode_b64(os.environ['GOOGLE_SERVICE_INFO_PLIST']))
-          print('Firebase config files decoded successfully')
-          PYEOF
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters

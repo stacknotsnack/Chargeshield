@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "391996572196",
+    "project_id": "chargeshield-5d393",
+    "storage_bucket": "chargeshield-5d393.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:391996572196:android:70d16cac1bb44865840eb1",
+        "android_client_info": {
+          "package_name": "com.chargeshield.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5GSZk1aielLhqu9riRnLI_e-iD51SXrk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
