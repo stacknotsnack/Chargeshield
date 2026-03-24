@@ -71,6 +71,7 @@ class AppConstants {
   static const String keySelectedVehicleReg = 'selected_vehicle_reg';
   static const String keySelectedVehicleType = 'selected_vehicle_type';
   static const String keySelectedVehicleFuelType = 'selected_vehicle_fuel_type';
+  static const String keySelectedVehicleEuroStandard = 'selected_vehicle_euro_standard';
 
   // Debug: when true the location stream uses the legacy LocationManager so that
   // mock GPS apps (Fake Route, etc.) are accepted. Should be OFF for real testing.

@@ -208,6 +208,13 @@ class BackgroundLocationService {
     // Route points per active zone: zone_id → [{lat, lng}, ...]
     final Map<String, List<Map<String, double>>> activeRoutes = {};
 
+    // Movement tracking: only log journey entries when the vehicle is actually
+    // moving. Prevents false entries when parked at home inside a charge zone.
+    LatLng? _lastMovedPoint;
+    DateTime? _lastMovedTime;
+    const double _minSpeedMs = 1.39; // 5 km/h in m/s
+    const double _minMovementM = 200.0; // 200 metres in 5 minutes
+
     StreamSubscription<Position>? positionSub;
 
     positionSub = Geolocator.getPositionStream(locationSettings: locationSettings)
@@ -238,9 +245,23 @@ class BackgroundLocationService {
         }
       }
 
+      // Update movement tracking
+      if (position.speed >= _minSpeedMs) {
+        _lastMovedPoint = point;
+        _lastMovedTime = DateTime.now();
+      }
+      final bool isMoving = position.speed >= _minSpeedMs ||
+          (_lastMovedPoint != null &&
+              _lastMovedTime != null &&
+              DateTime.now().difference(_lastMovedTime!) <=
+                  const Duration(minutes: 5) &&
+              Geolocator.distanceBetween(point.latitude, point.longitude,
+                      _lastMovedPoint!.latitude, _lastMovedPoint!.longitude) >
+                  _minMovementM);
+
       final entries = ZoneDetectionService.instance.detectEntries(previousStatus, current);
       if (entries.isNotEmpty) {
-        debugPrint('DEBUG ENTRY: Zone entries detected: ${entries.map((z) => z.shortName).join(', ')}');
+        debugPrint('DEBUG ENTRY: Zone entries detected: ${entries.map((z) => z.shortName).join(', ')} isMoving=$isMoving');
       }
 
       // Handle zone exits — update journey with exit time and route
@@ -268,6 +289,7 @@ class BackgroundLocationService {
         String vehicleReg = prefs.getString(AppConstants.keySelectedVehicleReg) ?? 'Your vehicle';
         String vehicleType = prefs.getString(AppConstants.keySelectedVehicleType) ?? 'car';
         String vehicleFuelType = prefs.getString(AppConstants.keySelectedVehicleFuelType) ?? 'petrol';
+        String vehicleEuroStandard = prefs.getString(AppConstants.keySelectedVehicleEuroStandard) ?? '';
         if (hiveAvailable) {
           try {
             final settingsBox = Hive.box(AppConstants.settingsBox);
@@ -280,27 +302,33 @@ class BackgroundLocationService {
               vehicleReg = vehicle?.registration ?? vehicleReg;
               vehicleType = vehicle?.type ?? vehicleType;
               vehicleFuelType = vehicle?.fuelType ?? vehicleFuelType;
+              vehicleEuroStandard = vehicle?.euroStandard ?? vehicleEuroStandard;
             }
           } catch (e) {
             debugPrint('DEBUG BG: Hive vehicle lookup failed: $e');
             // keep SharedPreferences fallback values
           }
         }
-        debugPrint('DEBUG BG: Vehicle=$vehicleReg type=$vehicleType fuel=$vehicleFuelType');
+        debugPrint('DEBUG BG: Vehicle=$vehicleReg type=$vehicleType fuel=$vehicleFuelType euro=$vehicleEuroStandard');
 
-        // Log journey history and start tracking the active journey
-        for (final zone in entries) {
-          try {
-            final journeyId = await _logZoneEntry(
-                zone, point, vehicleReg, vehicleType, vehicleFuelType);
-            activeJourneyIds[zone.id] = journeyId;
-            if (recordRoute) {
-              activeRoutes[zone.id] = [{'lat': point.latitude, 'lng': point.longitude}];
+        // Log journey history only when moving — prevents false entries when
+        // parked at home or stationary inside a charge zone boundary.
+        if (isMoving) {
+          for (final zone in entries) {
+            try {
+              final journeyId = await _logZoneEntry(
+                  zone, point, vehicleReg, vehicleType, vehicleFuelType, vehicleEuroStandard);
+              activeJourneyIds[zone.id] = journeyId;
+              if (recordRoute) {
+                activeRoutes[zone.id] = [{'lat': point.latitude, 'lng': point.longitude}];
+              }
+              debugPrint('DEBUG BG: Journey logged id=$journeyId zone=${zone.id}');
+            } catch (e, st) {
+              debugPrint('DEBUG BG: _logZoneEntry failed for ${zone.id}: $e\n$st');
             }
-            debugPrint('DEBUG BG: Journey logged id=$journeyId zone=${zone.id}');
-          } catch (e, st) {
-            debugPrint('DEBUG BG: _logZoneEntry failed for ${zone.id}: $e\n$st');
           }
+        } else {
+          debugPrint('DEBUG BG: Zone entry detected but vehicle is stationary — skipping history log');
         }
 
         // Send notification if enabled (or always in debug so we can test).
@@ -410,19 +438,30 @@ class BackgroundLocationService {
   }
 
   static Future<String> _logZoneEntry(ZoneInfo zone, LatLng position,
-      String vehicleReg, String vehicleType, String vehicleFuelType) async {
+      String vehicleReg, String vehicleType, String vehicleFuelType,
+      String vehicleEuroStandard) async {
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     double charge = zone.chargeFor(vehicleType);
 
-    // Apply fuel-based exemptions that the vehicle-type lookup can't know about.
-    // ULEZ: electric, hybrid, PHEV are compliant → no charge.
-    // CCZ: electric, hybrid, PHEV are exempt → no charge.
     final isElectricOrHybrid = vehicleFuelType == 'electric' ||
         vehicleFuelType == 'hybrid' ||
         vehicleFuelType == 'phev';
-    if (isElectricOrHybrid &&
-        (zone.id == 'ulez' || zone.id == 'ccz') &&
-        charge > 0.0) {
+
+    // ULEZ: full compliance check including Euro standard.
+    // Electric/PHEV always exempt. Petrol/hybrid Euro 4+ exempt. Diesel Euro 6 only.
+    if (zone.id == 'ulez' && charge > 0.0) {
+      if (_isUlezCompliant(vehicleFuelType, vehicleEuroStandard)) charge = 0.0;
+    }
+
+    // CCZ: electric, hybrid, PHEV are exempt.
+    if (zone.id == 'ccz' && charge > 0.0 && isElectricOrHybrid) {
+      charge = 0.0;
+    }
+
+    // UK CAZ zones (Bath, Birmingham, Bradford, Portsmouth, Bristol):
+    // electric and PHEV are exempt from daily CAZ charges.
+    const _cazZoneIds = {'birmingham', 'bath', 'portsmouth', 'bradford', 'bristol'};
+    if (_cazZoneIds.contains(zone.id) && charge > 0.0 && isElectricOrHybrid) {
       charge = 0.0;
     }
 
@@ -463,6 +502,19 @@ class BackgroundLocationService {
     journey.exitLng = exitPoint.longitude;
     journey.routePoints = routePoints;
     await db.updateJourney(journey);
+  }
+
+  /// Returns true if the vehicle is ULEZ-compliant (no charge applies).
+  /// Mirrors Vehicle.isUlezCompliant in vehicle.dart.
+  static bool _isUlezCompliant(String fuelType, String euroStandard) {
+    if (fuelType == 'electric' || fuelType == 'phev') return true;
+    if (fuelType == 'petrol' || fuelType == 'hybrid') {
+      return euroStandard == 'Euro 4' ||
+          euroStandard == 'Euro 5' ||
+          euroStandard == 'Euro 6';
+    }
+    if (fuelType == 'diesel') return euroStandard == 'Euro 6';
+    return false;
   }
 
   /// Returns true if it's currently the overnight free window (22:00–06:00).

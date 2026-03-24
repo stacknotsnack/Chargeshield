@@ -164,6 +164,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await prefs.setString(AppConstants.keySelectedVehicleReg, v.registration);
     await prefs.setString(AppConstants.keySelectedVehicleType, v.type);
     await prefs.setString(AppConstants.keySelectedVehicleFuelType, v.fuelType);
+    await prefs.setString(AppConstants.keySelectedVehicleEuroStandard, v.euroStandard);
     ref.read(selectedVehicleProvider.notifier).state = v;
   }
 
