@@ -15,7 +15,7 @@ final isPremiumProvider = StateProvider<bool>((ref) {
 });
 
 final journeyHistoryProvider =
-    FutureProvider.family<List<Journey>, String?>((ref, vehicleReg) async {
+    FutureProvider.autoDispose.family<List<Journey>, String?>((ref, vehicleReg) async {
   final repo = ref.read(journeyRepositoryProvider);
   final isPremium = ref.watch(isPremiumProvider);
   return repo.getRecent(
@@ -26,7 +26,7 @@ final journeyHistoryProvider =
 });
 
 final monthlyTotalProvider =
-    FutureProvider.family<double, String>((ref, vehicleReg) async {
+    FutureProvider.autoDispose.family<double, String>((ref, vehicleReg) async {
   final repo = ref.read(journeyRepositoryProvider);
   return repo.monthlyTotal(vehicleReg);
 });

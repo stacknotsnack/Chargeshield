@@ -53,6 +53,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _serviceCheckTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       _syncTrackingState();
     });
+    // Ensure SharedPreferences vehicle cache is populated so the background
+    // isolate has the correct registration even if Hive is unavailable.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final vehicle = ref.read(selectedVehicleProvider);
+      if (vehicle != null) _cacheVehicle(vehicle);
+    });
   }
 
   /// Reads isRunning() and updates the provider to match reality.
