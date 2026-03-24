@@ -62,9 +62,11 @@
 	<true/>
 
 	<!-- ───────────── Background tasks (flutter_background_service iOS) ───────────── -->
+	<!-- Identifier is hardcoded in flutter_background_service_ios SwiftFlutterBackgroundServicePlugin.swift -->
+	<!-- Missing this entry causes NSInternalInconsistencyException crash on every launch -->
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+		<string>dev.flutter.background.refresh</string>
 	</array>
 
 	<key>UIApplicationSupportsIndirectInputEvents</key>
