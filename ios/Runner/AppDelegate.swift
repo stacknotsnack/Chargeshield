@@ -9,9 +9,11 @@ import FirebaseCore
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Google Maps — key is injected at build time via Codemagic environment variable
-    // GOOGLE_MAPS_IOS_API_KEY must be set in Codemagic or passed via --dart-define
-    if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String {
+    // Google Maps — key is injected via GOOGLE_MAPS_IOS_API_KEY build setting (xcconfig).
+    // Guard: skip if the plist variable was never expanded (literal "$(..." remaining),
+    // which would crash the Google Maps SDK with an invalid-key assertion.
+    if let mapsKey = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String,
+       !mapsKey.isEmpty, !mapsKey.hasPrefix("$(") {
       GMSServices.provideAPIKey(mapsKey)
     }
 
