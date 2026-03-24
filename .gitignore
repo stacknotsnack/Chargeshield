@@ -16,8 +16,6 @@ android/app/.cxx/
 android/captures/
 
 # iOS secrets
-ios/Flutter/Release.xcconfig
-ios/Flutter/Debug.xcconfig
 
 # IDE
 .idea/
