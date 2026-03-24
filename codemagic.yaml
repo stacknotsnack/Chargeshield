@@ -7,6 +7,8 @@ workflows:
       flutter: stable
       vars:
         BUNDLE_ID: com.chargeshield.app
+        GOOGLE_SERVICES_JSON: $GOOGLE_SERVICES_JSON
+        GOOGLE_SERVICE_INFO_PLIST: $GOOGLE_SERVICE_INFO_PLIST
     scripts:
       - name: Decode Firebase config files
         script: |
@@ -44,6 +46,8 @@ workflows:
         APP_NAME: ChargeShield
         XCODE_WORKSPACE: ios/Runner.xcworkspace
         XCODE_SCHEME: Runner
+        GOOGLE_SERVICES_JSON: $GOOGLE_SERVICES_JSON
+        GOOGLE_SERVICE_INFO_PLIST: $GOOGLE_SERVICE_INFO_PLIST
     scripts:
       - name: Decode Firebase config files
         script: |
