@@ -57,8 +57,11 @@ workflows:
             --dart-define=GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY
           cd build/ios/iphoneos
           mkdir -p Payload
-          cp -r Runner.app Payload/Runner.app
-          zip -r ChargeShield.ipa Payload
+          # Use ditto (not cp + zip) — preserves macOS symlinks and resource forks
+          # inside .framework bundles. Plain 'zip -r' without -y stores symlinks
+          # incorrectly, causing dyld "library not loaded" crashes at launch.
+          ditto Runner.app Payload/Runner.app
+          ditto -c -k --keepParent Payload ChargeShield.ipa
           mkdir -p $CM_BUILD_DIR/output
           mv ChargeShield.ipa $CM_BUILD_DIR/output/ChargeShield.ipa
     artifacts:
