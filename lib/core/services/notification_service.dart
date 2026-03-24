@@ -37,8 +37,18 @@ class NotificationService {
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@drawable/ic_notification');
 
+    // iOS init settings — must be non-null on iOS or flutter_local_notifications
+    // throws ArgumentError before calling native, leaving _initialized=false
+    // and breaking all notification tap callbacks.
+    const DarwinInitializationSettings iOSSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
+      iOS: iOSSettings,
     );
 
     await _local.initialize(
@@ -136,11 +146,17 @@ class NotificationService {
       icon: '@drawable/ic_notification',
     );
 
+    const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: false,
+    );
+
     await _local.show(
       AppConstants.zoneEntryNotificationId,
       title,
       body,
-      const NotificationDetails(android: androidDetails),
+      const NotificationDetails(android: androidDetails, iOS: iOSDetails),
       payload: payload,
     );
   }
@@ -191,11 +207,17 @@ class NotificationService {
               ],
       );
 
+      const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        presentBadge: false,
+      );
+
       await _local.show(
         notifId,
         title,
         body,
-        NotificationDetails(android: androidDetails),
+        NotificationDetails(android: androidDetails, iOS: iOSDetails),
         payload: zone.payUrl,
       );
     }
@@ -238,12 +260,18 @@ class NotificationService {
       priority: Priority.high,
     );
 
+    const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: false,
+    );
+
     await _local.zonedSchedule(
       AppConstants.paymentReminderBaseId + id,
       '${zone.shortName} Payment Reminder',
       'Pay your ${zone.name} charge before ${_formatTime(deadline)}. £${zone.dailyCharge.toStringAsFixed(2)}',
       tz.TZDateTime.from(reminderTime, tz.getLocation('Europe/London')),
-      const NotificationDetails(android: androidDetails),
+      const NotificationDetails(android: androidDetails, iOS: iOSDetails),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -350,12 +378,17 @@ class NotificationService {
         priority: Priority.high,
         icon: '@drawable/ic_notification',
       );
+      const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        presentBadge: false,
+      );
       await _local.zonedSchedule(
         id,
         title,
         body,
         tz.TZDateTime.from(triggerDate, tz.getLocation('Europe/London')),
-        const NotificationDetails(android: androidDetails),
+        const NotificationDetails(android: androidDetails, iOS: iOSDetails),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
