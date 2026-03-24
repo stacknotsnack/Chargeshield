@@ -40,12 +40,11 @@ workflows:
       - name: Build iOS unsigned IPA
         script: |
           flutter build ios --release --no-codesign
-          cd ios && xcodebuild -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/Runner.xcarchive \
-            archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/Runner.app
+          zip -r ChargeShield.ipa Payload
+          mkdir -p $CM_BUILD_DIR/output
+          mv ChargeShield.ipa $CM_BUILD_DIR/output/ChargeShield.ipa
     artifacts:
-      - build/ios/ipa/*.ipa
-      - ios/build/Runner.xcarchive
+      - $CM_BUILD_DIR/output/ChargeShield.ipa
