@@ -39,3 +39,6 @@ secrets.json
 *.apk
 *.aab
 *.ipa
+
+# Local build script contains API keys — never commit
+build_release.ps1
