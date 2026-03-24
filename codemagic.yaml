@@ -10,10 +10,16 @@ workflows:
     scripts:
       - name: Decode Firebase config files
         script: |
-          printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > android/app/google-services.json
-          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | tr -d '[:space:]' | base64 --decode > ios/Runner/GoogleService-Info.plist
-          echo "--- google-services.json first 80 chars ---"
-          head -c 80 android/app/google-services.json
+          python3 - <<'PYEOF'
+          import base64, os
+          gs = os.environ['GOOGLE_SERVICES_JSON'].strip()
+          with open('android/app/google-services.json', 'wb') as f:
+              f.write(base64.b64decode(gs))
+          plist = os.environ['GOOGLE_SERVICE_INFO_PLIST'].strip()
+          with open('ios/Runner/GoogleService-Info.plist', 'wb') as f:
+              f.write(base64.b64decode(plist))
+          print('Firebase config files decoded successfully')
+          PYEOF
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters
@@ -41,8 +47,16 @@ workflows:
     scripts:
       - name: Decode Firebase config files
         script: |
-          printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > android/app/google-services.json
-          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | tr -d '[:space:]' | base64 --decode > ios/Runner/GoogleService-Info.plist
+          python3 - <<'PYEOF'
+          import base64, os
+          gs = os.environ['GOOGLE_SERVICES_JSON'].strip()
+          with open('android/app/google-services.json', 'wb') as f:
+              f.write(base64.b64decode(gs))
+          plist = os.environ['GOOGLE_SERVICE_INFO_PLIST'].strip()
+          with open('ios/Runner/GoogleService-Info.plist', 'wb') as f:
+              f.write(base64.b64decode(plist))
+          print('Firebase config files decoded successfully')
+          PYEOF
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters
