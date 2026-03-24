@@ -7,13 +7,18 @@ workflows:
       flutter: stable
       vars:
         BUNDLE_ID: com.chargeshield.app
+        DVLA_API_KEY: $DVLA_API_KEY
+        GOOGLE_MAPS_API_KEY: $GOOGLE_MAPS_IOS_API_KEY
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate Hive adapters
         script: flutter pub run build_runner build --delete-conflicting-outputs
       - name: Build Android APK
-        script: flutter build apk --release --split-per-abi
+        script: |
+          flutter build apk --release --split-per-abi \
+            --dart-define=DVLA_API_KEY=$DVLA_API_KEY \
+            --dart-define=GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
 
@@ -30,6 +35,8 @@ workflows:
         APP_NAME: ChargeShield
         XCODE_WORKSPACE: ios/Runner.xcworkspace
         XCODE_SCHEME: Runner
+        DVLA_API_KEY: $DVLA_API_KEY
+        GOOGLE_MAPS_API_KEY: $GOOGLE_MAPS_IOS_API_KEY
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
@@ -39,7 +46,9 @@ workflows:
         script: cd ios && pod install
       - name: Build iOS unsigned IPA
         script: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign \
+            --dart-define=DVLA_API_KEY=$DVLA_API_KEY \
+            --dart-define=GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/Runner.app

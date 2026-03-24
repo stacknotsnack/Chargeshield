@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -136,7 +137,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await box.put(AppConstants.keyTrackingEnabled, false);
       ref.read(_trackingProvider.notifier).state = false;
     } else {
-      // Check foreground location permission
+      // Android 13+ (Pixel and stock Android): POST_NOTIFICATIONS must be
+      // granted before starting a foreground service or the OS kills it.
+      if (Platform.isAndroid) {
+        await Permission.notification.request();
+      }
+
+      // Step 1: foreground location (required first on Android 11+)
       final foreground = await Permission.locationWhenInUse.status;
       if (!foreground.isGranted) {
         final result = await Permission.locationWhenInUse.request();
@@ -150,10 +157,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
       }
 
+      // Step 2: background location — required for foreground service type=location.
+      // On Pixel/stock Android this is enforced strictly; missing it crashes the service.
+      final background = await Permission.locationAlways.status;
+      if (!background.isGranted) {
+        final result = await Permission.locationAlways.request();
+        if (!result.isGranted && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Background location is required. Go to Settings → App → Location → Allow all the time.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+          return;
+        }
+      }
+
       // Optimistically show green immediately — timer will correct it if service fails
       ref.read(_trackingProvider.notifier).state = true;
       await box.put(AppConstants.keyTrackingEnabled, true);
-      await BackgroundLocationService.start();
+      try {
+        await BackgroundLocationService.start();
+      } catch (e) {
+        debugPrint('BackgroundLocationService.start() failed: $e');
+        if (mounted) {
+          ref.read(_trackingProvider.notifier).state = false;
+          await box.put(AppConstants.keyTrackingEnabled, false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not start tracking: $e')),
+          );
+        }
+      }
     }
   }
 
