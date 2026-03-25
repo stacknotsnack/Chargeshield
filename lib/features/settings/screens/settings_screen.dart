@@ -11,6 +11,7 @@ import '../../../core/providers/zone_prefs_provider.dart';
 import '../../../core/services/background_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../history/providers/history_provider.dart';
 import '../../subscription/providers/subscription_provider.dart';
 
@@ -188,6 +189,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       body: ListView(
         children: [
+          // Account
+          const _SectionHeader('Account'),
+          _AccountTile(),
+          const Divider(),
+
           // Notifications
           const _SectionHeader('Notifications'),
           SwitchListTile(
@@ -774,6 +780,93 @@ class _SectionHeader extends StatelessWidget {
           letterSpacing: 1.2,
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Account tile — shows sign in prompt or signed-in state
+// ---------------------------------------------------------------------------
+
+class _AccountTile extends ConsumerWidget {
+  const _AccountTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+
+    if (auth.status == AuthStatus.signingIn) {
+      return const ListTile(
+        leading: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        title: Text('Signing in...'),
+      );
+    }
+
+    if (auth.isSignedIn) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            leading:
+                const Icon(Icons.check_circle_outline, color: Colors.green),
+            title: Text(
+              auth.user!.email ?? 'Google account',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text('Your journey history is backed up'),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: TextButton(
+              onPressed: () =>
+                  ref.read(authProvider.notifier).signOut(),
+              child: Text('Sign out',
+                  style: TextStyle(color: Colors.grey.shade600)),
+            ),
+          ),
+          if (auth.error != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(auth.error!,
+                  style: const TextStyle(
+                      color: Colors.red, fontSize: 12)),
+            ),
+        ],
+      );
+    }
+
+    // Anonymous — gentle sign-in banner, no nag
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          leading: const Icon(Icons.backup_outlined),
+          title: const Text('Back up your data'),
+          subtitle: const Text(
+            'Sign in with Google to save journey history\nand restore on any device',
+          ),
+          isThreeLine: true,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.login, size: 18),
+            label: const Text('Sign in with Google'),
+            onPressed: () =>
+                ref.read(authProvider.notifier).signInWithGoogle(),
+          ),
+        ),
+        if (auth.error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(auth.error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ),
+      ],
     );
   }
 }

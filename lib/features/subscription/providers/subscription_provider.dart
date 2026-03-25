@@ -8,7 +8,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/firestore_sync_service.dart';
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
@@ -84,13 +87,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         return true;
       }
 
-      // Server validation
+      // Server validation — send uid if signed in (preferred), else deviceId
       final deviceId = await _getDeviceId();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
       try {
         final response = await http.post(
           Uri.parse('https://chargeshield.co.uk/.netlify/functions/validate-key'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'key': key, 'deviceId': deviceId}),
+          body: jsonEncode({
+            'key': key,
+            'deviceId': deviceId,
+            if (uid != null) 'uid': uid,
+          }),
         ).timeout(const Duration(seconds: 10));
 
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -157,6 +165,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       licenceKey: key,
       clearError: true,
     );
+    // If signed in, also persist key to Firestore for cross-device restore
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      try {
+        await FirestoreSyncService.saveLicenceKey(uid, key);
+        debugPrint('Licence key saved to Firestore for $uid');
+      } catch (e) {
+        debugPrint('Failed to save licence key to Firestore (non-fatal): $e');
+      }
+    }
   }
 
   Future<String> _getDeviceId() async {

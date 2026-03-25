@@ -12,7 +12,20 @@
           "package_name": "com.chargeshield.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "391996572196-pqflf3tb7m16af4d7njsrenrvdh0hmqo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.chargeshield.app",
+            "certificate_hash": "e8be93b49d4859a24cc0a945f84775e269683470"
+          }
+        },
+        {
+          "client_id": "391996572196-s7k5gik699fsb1amc201cqvva1re5hq0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA5GSZk1aielLhqu9riRnLI_e-iD51SXrk"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "391996572196-s7k5gik699fsb1amc201cqvva1re5hq0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "391996572196-1uagchmkt960k7criasd0pqq2q6tt7jc.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.chargeshield.app"
+              }
+            }
+          ]
         }
       }
     }
