@@ -1,13 +1,26 @@
 // Netlify serverless function — Stripe webhook handler
 // Triggered by Stripe on checkout.session.completed.
-// Generates a CS-XXXX-XXXX-XXXX licence key and emails it via Resend.
+// Generates a CS-XXXX-XXXX-XXXX licence key, saves it to Firestore, and emails it via Resend.
 //
 // Required environment variables (set in Netlify dashboard → Site config → Env vars):
 //   STRIPE_SECRET_KEY        — Stripe secret key (sk_live_...)
 //   STRIPE_WEBHOOK_SECRET    — Signing secret from Stripe webhook dashboard (whsec_...)
 //   RESEND_API_KEY           — Resend API key (re_...)
+//   FIREBASE_SERVICE_ACCOUNT — Base64-encoded Firebase service account JSON
 
 const stripe = require('stripe');
+const admin = require('firebase-admin');
+
+// Initialise Firebase Admin SDK once (functions are reused across invocations)
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(
+      JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8'))
+    ),
+  });
+}
+
+const db = admin.firestore();
 
 // ---------------------------------------------------------------------------
 // Licence key generator — CS-XXXX-XXXX-XXXX (alphanumeric, uppercase)
@@ -117,6 +130,28 @@ exports.handler = async (event) => {
 
     const licenceKey = generateLicenceKey();
     console.log(`Generated licence key ${licenceKey} for ${email}`);
+
+    // Determine plan from Stripe price/product metadata if available
+    const planType = session.metadata?.plan || 'monthly';
+
+    // Save key to Firestore — server-side validation reads from here
+    try {
+      await db.collection('licence_keys').doc(licenceKey).set({
+        key: licenceKey,
+        status: 'active',
+        email: email,
+        plan: planType,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        activatedAt: null,
+        deviceId: null,
+        activationCount: 0,
+        stripeSessionId: session.id,
+      });
+      console.log(`Licence key ${licenceKey} saved to Firestore`);
+    } catch (firestoreErr) {
+      // Log but don't block — email still sends so customer isn't left without their key
+      console.error('Firestore save failed (non-fatal):', firestoreErr.message);
+    }
 
     // Send via Resend
     const resendRes = await fetch('https://api.resend.com/emails', {
