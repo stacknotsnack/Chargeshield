@@ -153,6 +153,29 @@ class DatabaseHelper {
     await db.delete('journeys', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Returns true if a journey already exists for [zoneId] + [vehicleRegistration]
+  /// within today's calendar day (local time). Used to prevent duplicate charges
+  /// for per-day zones (ULEZ, CCZ, LEZ, CAZ) when a vehicle re-enters the zone.
+  Future<bool> hasTodayEntry(String zoneId, String vehicleRegistration) async {
+    final db = await database;
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final result = await db.query(
+      'journeys',
+      where:
+          'zone_id = ? AND vehicle_registration = ? AND entry_time >= ? AND entry_time < ?',
+      whereArgs: [
+        zoneId,
+        vehicleRegistration,
+        startOfDay.toIso8601String(),
+        endOfDay.toIso8601String(),
+      ],
+      limit: 1,
+    );
+    return result.isNotEmpty;
+  }
+
   Future<void> deleteJourneysOlderThan(int days) async {
     final db = await database;
     final cutoff = DateTime.now().subtract(Duration(days: days));

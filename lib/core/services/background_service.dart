@@ -311,10 +311,32 @@ class BackgroundLocationService {
         }
         debugPrint('DEBUG BG: Vehicle=$vehicleReg type=$vehicleType fuel=$vehicleFuelType euro=$vehicleEuroStandard');
 
+        // Per-day zones (ULEZ, CCZ, LEZ, CAZ): only charge once per calendar day.
+        // Per-crossing zones (Dartford, tunnels, M6): always log every crossing.
+        final loggableEntries = <ZoneInfo>[];
+        for (final zone in entries) {
+          if (zone.isCrossing) {
+            loggableEntries.add(zone);
+          } else {
+            try {
+              final alreadyToday = await DatabaseHelper.instance
+                  .hasTodayEntry(zone.id, vehicleReg);
+              if (!alreadyToday) {
+                loggableEntries.add(zone);
+              } else {
+                debugPrint('DEBUG BG: ${zone.shortName} — already charged today, skipping entry+notification');
+              }
+            } catch (e) {
+              loggableEntries.add(zone); // fail-safe: log if DB check throws
+              debugPrint('DEBUG BG: hasTodayEntry failed for ${zone.id}: $e');
+            }
+          }
+        }
+
         // Log journey history only when moving — prevents false entries when
         // parked at home or stationary inside a charge zone boundary.
         if (isMoving) {
-          for (final zone in entries) {
+          for (final zone in loggableEntries) {
             try {
               final journeyId = await _logZoneEntry(
                   zone, point, vehicleReg, vehicleType, vehicleFuelType, vehicleEuroStandard);
@@ -336,7 +358,7 @@ class BackgroundLocationService {
         final notifEnabled = prefs.getBool(AppConstants.keyNotificationsEnabled) ?? true;
         debugPrint('DEBUG BG: notifEnabled=$notifEnabled kDebugMode=$kDebugMode');
         if (notifEnabled || kDebugMode) {
-          final notifiableEntries = entries.where((zone) {
+          final notifiableEntries = loggableEntries.where((zone) {
             final key = '${AppConstants.keyNotifyZonePrefix}${zone.id}';
             return prefs.getBool(key) ?? true; // default ON if not set
           }).toList();
@@ -381,7 +403,7 @@ class BackgroundLocationService {
         if (prefs.getBool(AppConstants.keyPaymentRemindersEnabled) ?? true) {
           final minutesBefore =
               prefs.getInt(AppConstants.keyReminderMinutesBefore) ?? 60;
-          for (final zone in entries) {
+          for (final zone in loggableEntries) {
             try {
               final deadline = _nextPaymentDeadline(zone.id);
               await NotificationService.instance.schedulePaymentReminder(
@@ -526,11 +548,26 @@ class BackgroundLocationService {
 
   static DateTime _nextPaymentDeadline(String zoneId) {
     final now = DateTime.now();
-    // CCZ payment deadline: same day if entered before 14:00, else next day. Pay by midnight.
-    // Simplified: deadline is 23:59 today or tomorrow.
     final today2359 = DateTime(now.year, now.month, now.day, 23, 59);
-    if (now.isBefore(today2359)) return today2359;
-    return today2359.add(const Duration(days: 1));
+    switch (zoneId) {
+      case 'ccz':
+        // Pay by midnight on the third day after entry
+        return DateTime(now.year, now.month, now.day + 3, 23, 59);
+      case 'dartford':
+        // Pay by midnight the day after crossing
+        return today2359.add(const Duration(days: 1));
+      case 'silvertown':
+      case 'blackwall':
+        // Pay by midnight same day
+        return now.isBefore(today2359) ? today2359 : today2359.add(const Duration(days: 1));
+      case 'm6_toll_north':
+      case 'm6_toll_south':
+        // Immediate at point of crossing
+        return now;
+      default:
+        // ULEZ, LEZ, CAZ zones: pay by midnight same day
+        return now.isBefore(today2359) ? today2359 : today2359.add(const Duration(days: 1));
+    }
   }
 
   @pragma('vm:entry-point')
