@@ -11,6 +11,7 @@ import '../../../core/providers/zone_prefs_provider.dart';
 import '../../../core/services/background_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../history/providers/history_provider.dart';
 import '../../subscription/providers/subscription_provider.dart';
 
@@ -188,6 +189,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       body: ListView(
         children: [
+          // Account
+          Consumer(builder: (context, ref, _) {
+            final auth = ref.watch(authProvider);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionHeader('Account'),
+                if (!auth.isSignedIn)
+                  ListTile(
+                    leading: const Icon(Icons.backup_outlined),
+                    title: const Text('Back up your data',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text(
+                        'Sign in to save journey history across devices',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: auth.isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : TextButton(
+                            onPressed: () async {
+                              final success = await ref
+                                  .read(authProvider.notifier)
+                                  .signInWithGoogle();
+                              if (!success && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          'Sign in failed. Please try again.')));
+                              }
+                            },
+                            child: const Text('Sign in with Google'),
+                          ),
+                  )
+                else
+                  ListTile(
+                    leading:
+                        const Icon(Icons.check_circle, color: AppColors.safe),
+                    title: const Text('Signed in',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(auth.email ?? '',
+                        style: const TextStyle(fontSize: 12)),
+                    trailing: TextButton(
+                      onPressed: () =>
+                          ref.read(authProvider.notifier).signOut(),
+                      child: const Text('Sign out',
+                          style: TextStyle(color: Colors.grey)),
+                    ),
+                  ),
+                const Divider(),
+              ],
+            );
+          }),
+
           // Notifications
           const _SectionHeader('Notifications'),
           SwitchListTile(

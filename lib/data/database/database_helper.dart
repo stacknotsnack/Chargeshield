@@ -1,3 +1,8 @@
+import 'dart:async' show unawaited;
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -78,6 +83,23 @@ class DatabaseHelper {
       journey.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    // Fire-and-forget — never blocks or throws into the caller.
+    unawaited(_backupToFirestore(journey));
+  }
+
+  Future<void> _backupToFirestore(Journey journey) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return; // Not signed in — skip silently.
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('journey_history')
+          .doc(journey.id)
+          .set(journey.toMap());
+    } catch (e) {
+      debugPrint('Firestore backup failed: $e');
+    }
   }
 
   Future<void> updateJourney(Journey journey) async {
