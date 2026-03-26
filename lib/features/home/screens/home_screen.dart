@@ -20,6 +20,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../data/models/vehicle.dart';
 import '../../vehicles/providers/vehicles_provider.dart';
 import '../../history/providers/history_provider.dart';
+import '../../subscription/providers/subscription_provider.dart';
 import '../widgets/zone_status_card.dart';
 import '../widgets/vehicle_selector.dart';
 
@@ -203,6 +204,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(selectedVehicleProvider.notifier).state = v;
   }
 
+  void _onAddVehicle() {
+    final vehicles = ref.read(vehiclesProvider);
+    final isPremium = ref.read(subscriptionProvider).isPremium;
+    final maxVehicles =
+        isPremium ? AppConstants.proVehicleLimit : AppConstants.freeVehicleLimit;
+    if (vehicles.length >= maxVehicles) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Free Tier Limit'),
+          content: const Text(
+              'Upgrade to Pro to add more than 2 vehicles.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                context.push('/subscription');
+              },
+              child: const Text('Upgrade'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    context.push('/vehicles/add');
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicles = ref.watch(vehiclesProvider);
@@ -281,7 +313,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               vehicles: vehicles,
               selected: selectedVehicle,
               onSelect: (v) => _cacheVehicle(v),
-              onAdd: () => context.push('/vehicles/add'),
+              onAdd: _onAddVehicle,
             ),
 
             const SizedBox(height: 16),
