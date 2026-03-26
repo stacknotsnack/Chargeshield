@@ -198,6 +198,11 @@ class DatabaseHelper {
     return result.isNotEmpty;
   }
 
+  Future<void> deleteAllJourneys() async {
+    final db = await database;
+    await db.delete('journeys');
+  }
+
   Future<void> deleteJourneysOlderThan(int days) async {
     final db = await database;
     final cutoff = DateTime.now().subtract(Duration(days: days));

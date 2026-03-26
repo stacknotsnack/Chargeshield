@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/zone_polygons.dart';
+import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/zone_prefs_provider.dart';
 import '../../../core/services/background_service.dart';
 import '../../../core/services/notification_service.dart';
@@ -369,6 +370,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _RecordRouteToggle(),
 
           const Divider(),
+          const _SectionHeader('Appearance'),
+          Consumer(builder: (context, ref, _) {
+            final mode = ref.watch(themeModeProvider);
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.brightness_auto, size: 16),
+                    label: Text('System'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode, size: 16),
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode, size: 16),
+                    label: Text('Dark'),
+                  ),
+                ],
+                selected: {mode},
+                onSelectionChanged: (v) =>
+                    ref.read(themeModeProvider.notifier).set(v.first),
+              ),
+            );
+          }),
+
+          const Divider(),
           const _SectionHeader('Subscription'),
           ListTile(
             leading: const Icon(Icons.workspace_premium, color: AppColors.premium),
@@ -587,7 +619,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     if (confirmed == true) {
-      // delete all
+      await ref.read(journeyRepositoryProvider).clearAll();
+      ref.invalidate(journeyHistoryProvider);
+      ref.invalidate(monthlyTotalProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Journey history cleared.')),
+        );
+      }
     }
   }
 }

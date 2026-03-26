@@ -34,6 +34,8 @@ class JourneyRepository {
     );
   }
 
+  Future<void> clearAll() => _db.deleteAllJourneys();
+
   Future<void> pruneOldHistory({bool isPremium = false}) =>
       _db.deleteJourneysOlderThan(isPremium ? 365 : 7);
 }
