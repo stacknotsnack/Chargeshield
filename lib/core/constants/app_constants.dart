@@ -30,7 +30,7 @@ class AppConstants {
   static const Set<String> freeAlertZoneIds = {'ulez', 'dartford'};
 
   // Free tier limits
-  static const int freeVehicleLimit = 1;
+  static const int freeVehicleLimit = 2;
   static const int freeHistoryDays = 7;
   static const int freeMonthlyAlertLimit = 15;
 

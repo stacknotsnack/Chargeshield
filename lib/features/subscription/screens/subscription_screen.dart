@@ -240,8 +240,8 @@ class _ComparisonTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const features = [
-      ('Vehicles', '1', '10'),
-      ('Alert zones', 'ULEZ & Dartford', 'All 6 zones'),
+      ('Vehicles', '2', '10'),
+      ('Alert zones', 'ULEZ & Dartford', 'All Zones'),
       ('Zone entry alerts', '15/month', 'Unlimited'),
       ('Journey history', '7 days', '12 months'),
       ('Monthly cost report', false, true),

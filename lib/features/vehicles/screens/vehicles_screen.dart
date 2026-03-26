@@ -63,7 +63,7 @@ class VehiclesScreen extends ConsumerWidget {
       builder: (_) => AlertDialog(
         title: const Text('Free Tier Limit'),
         content: const Text(
-            'The free tier supports 1 vehicle. Upgrade to ChargeShield Pro for up to 10 vehicles.'),
+            'Upgrade to Pro to add more than 2 vehicles.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),

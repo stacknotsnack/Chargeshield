@@ -33,17 +33,14 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  let key, deviceId, uid;
+  let key, deviceId;
   try {
-    ({ key, deviceId, uid } = JSON.parse(event.body));
+    ({ key, deviceId } = JSON.parse(event.body));
   } catch {
     return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ valid: false, reason: 'invalid_request' }) };
   }
 
-  // uid (Firebase Auth) is preferred over deviceId for account-based binding
-  const identifier = uid || deviceId;
-
-  if (!key || !identifier) {
+  if (!key || !deviceId) {
     return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ valid: false, reason: 'missing_fields' }) };
   }
 
@@ -89,8 +86,8 @@ exports.handler = async (event) => {
     };
   }
 
-  // Already activated on a different device/account
-  if (data.deviceId && data.deviceId !== identifier) {
+  // Already activated on a different device
+  if (data.deviceId && data.deviceId !== deviceId) {
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
@@ -98,11 +95,10 @@ exports.handler = async (event) => {
     };
   }
 
-  // Activate — bind to identifier (uid or deviceId) on first use
+  // Activate — bind to device on first use, or re-confirm same device
   try {
     await db.collection('licence_keys').doc(key).update({
-      deviceId: identifier,
-      uid: uid || null,
+      deviceId: deviceId,
       activatedAt: admin.firestore.FieldValue.serverTimestamp(),
       activationCount: admin.firestore.FieldValue.increment(1),
       status: 'activated',

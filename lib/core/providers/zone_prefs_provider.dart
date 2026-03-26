@@ -19,7 +19,7 @@ final zoneNotifsProvider =
 
 class ZoneNotifsNotifier extends StateNotifier<Map<String, bool>> {
   ZoneNotifsNotifier()
-      : super({for (final id in _allZoneIds) id: true}) {
+      : super({for (final id in _allZoneIds) id: AppConstants.freeAlertZoneIds.contains(id)}) {
     _load();
   }
 
@@ -27,7 +27,8 @@ class ZoneNotifsNotifier extends StateNotifier<Map<String, bool>> {
     final prefs = await SharedPreferences.getInstance();
     state = {
       for (final id in _allZoneIds)
-        id: prefs.getBool('${AppConstants.keyNotifyZonePrefix}$id') ?? true,
+        id: prefs.getBool('${AppConstants.keyNotifyZonePrefix}$id') ??
+            AppConstants.freeAlertZoneIds.contains(id),
     };
   }
 
