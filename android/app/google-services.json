@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "391996572196-pqflf3tb7m16af4d7njsrenrvdh0hmqo.apps.googleusercontent.com",
+          "client_id": "391996572196-c2mpjhq7qdhl8ffl3upnqa8empivmscd.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.chargeshield.app",
-            "certificate_hash": "e8be93b49d4859a24cc0a945f84775e269683470"
+            "certificate_hash": "590ddb97b4914c8af948642ea1a3483a586bf437"
           }
         },
         {
