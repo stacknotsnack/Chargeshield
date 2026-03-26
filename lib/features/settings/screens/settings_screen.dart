@@ -196,42 +196,79 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _SectionHeader('Account'),
-                if (!auth.isSignedIn)
-                  ListTile(
-                    leading: const Icon(Icons.backup_outlined),
-                    title: const Text('Back up your data',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: const Text(
-                        'Sign in to save journey history across devices',
-                        style: TextStyle(fontSize: 12)),
-                    trailing: auth.isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : TextButton(
-                            onPressed: () async {
-                              final success = await ref
+                if (!auth.isSignedIn) ...[
+                  // Verification notice clears itself after sign-in
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 6),
+                    child: Text(
+                      'Sign in to back up your journey history across devices.',
+                      style: TextStyle(
+                          fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                  ),
+                  // Google Sign-In button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
+                    child: OutlinedButton.icon(
+                      onPressed: auth.isLoading
+                          ? null
+                          : () async {
+                              final error = await ref
                                   .read(authProvider.notifier)
                                   .signInWithGoogle();
-                              if (!success && context.mounted) {
+                              if (error != null && context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          'Sign in failed. Please try again.')));
+                                    SnackBar(
+                                        content: Text(
+                                            'Sign in failed: $error')));
                               }
                             },
-                            child: const Text('Sign in with Google'),
-                          ),
-                  )
-                else
+                      icon: const Icon(Icons.login, size: 18),
+                      label: const Text('Sign in with Google'),
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 44)),
+                    ),
+                  ),
+                  // Email Sign-In button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
+                    child: OutlinedButton.icon(
+                      onPressed: auth.isLoading
+                          ? null
+                          : () => _showEmailAuthSheet(context, ref),
+                      icon: const Icon(Icons.email_outlined, size: 18),
+                      label: const Text('Sign in with Email'),
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 44)),
+                    ),
+                  ),
+                  if (auth.isLoading)
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Center(
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                ] else ...[
+                  // Signed-in state
                   ListTile(
-                    leading:
-                        const Icon(Icons.check_circle, color: AppColors.safe),
+                    leading: const Icon(Icons.check_circle,
+                        color: AppColors.safe),
                     title: const Text('Signed in',
                         style: TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(auth.email ?? '',
-                        style: const TextStyle(fontSize: 12)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(auth.email ?? '',
+                            style: const TextStyle(fontSize: 12)),
+                        const Text('Your data is backed up',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.safe)),
+                      ],
+                    ),
                     trailing: TextButton(
                       onPressed: () =>
                           ref.read(authProvider.notifier).signOut(),
@@ -239,6 +276,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           style: TextStyle(color: Colors.grey)),
                     ),
                   ),
+                  if (auth.verificationEmailSent)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.mark_email_unread_outlined,
+                                size: 16, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'A verification email has been sent to ${auth.email}. Please verify your email to fully activate your account.',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
                 const Divider(),
               ],
             );
@@ -387,6 +451,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showEmailAuthSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _EmailAuthSheet(ref: ref),
     );
   }
 
@@ -831,6 +905,172 @@ class _SectionHeader extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: Theme.of(context).colorScheme.primary,
           letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Email authentication bottom sheet
+// ---------------------------------------------------------------------------
+
+class _EmailAuthSheet extends StatefulWidget {
+  const _EmailAuthSheet({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  State<_EmailAuthSheet> createState() => _EmailAuthSheetState();
+}
+
+class _EmailAuthSheetState extends State<_EmailAuthSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _isRegister = false;
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final String? error;
+    if (_isRegister) {
+      error = await widget.ref
+          .read(authProvider.notifier)
+          .registerWithEmail(_emailCtrl.text, _passwordCtrl.text);
+    } else {
+      error = await widget.ref
+          .read(authProvider.notifier)
+          .signInWithEmail(_emailCtrl.text, _passwordCtrl.text);
+    }
+
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.pop(context); // success — close sheet
+    } else {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = error;
+      });
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      setState(() => _errorMessage = 'Enter your email address first.');
+      return;
+    }
+    final ok = await widget.ref
+        .read(authProvider.notifier)
+        .resetPassword(email);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? 'Password reset email sent to $email.'
+          : 'Could not send reset email. Check the address and try again.'),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomInset),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _isRegister ? 'Create Account' : 'Sign In',
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+              validator: (v) =>
+                  (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _passwordCtrl,
+              obscureText: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _submit(),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outlined),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
+              validator: (v) => (v == null || v.length < 6)
+                  ? 'Password must be at least 6 characters'
+                  : null,
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorMessage!,
+                  style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _isLoading ? null : _submit,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(_isRegister ? 'Create Account' : 'Sign In'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() {
+                    _isRegister = !_isRegister;
+                    _errorMessage = null;
+                  }),
+                  child: Text(_isRegister
+                      ? 'Already have an account? Sign in'
+                      : "Don't have an account? Create one"),
+                ),
+                if (!_isRegister)
+                  TextButton(
+                    onPressed: _resetPassword,
+                    child: const Text('Forgot password?'),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );
