@@ -668,6 +668,7 @@ class _RegionAccordion extends ConsumerWidget {
       // Remove ExpansionTile's default divider lines
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
+        key: PageStorageKey(region.name),
         initiallyExpanded: region.defaultExpanded,
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
         childrenPadding: EdgeInsets.zero,
